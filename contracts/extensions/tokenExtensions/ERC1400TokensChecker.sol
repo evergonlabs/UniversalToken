@@ -5,7 +5,7 @@
  */
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "lib/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "../../tools/ERC1820Client.sol";
@@ -20,19 +20,23 @@ import "./IERC1400TokensValidator.sol";
 import "./IERC1400TokensChecker.sol";
 
 interface IERC1400Extended {
-    // Not a real interface but added here since 'granularity' doesn't belong to IERC1400
+  // Not a real interface but added here since 'granularity' doesn't belong to IERC1400
 
-    function granularity() external view returns(uint256);
+  function granularity() external view returns (uint256);
 }
 
-contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Implementer {
+contract ERC1400TokensChecker is
+  IERC1400TokensChecker,
+  ERC1820Client,
+  ERC1820Implementer
+{
   using SafeMath for uint256;
 
-  string constant internal ERC1400_TOKENS_VALIDATOR = "ERC1400TokensValidator";
-  string constant internal ERC1400_TOKENS_CHECKER = "ERC1400TokensChecker";
+  string internal constant ERC1400_TOKENS_VALIDATOR = "ERC1400TokensValidator";
+  string internal constant ERC1400_TOKENS_CHECKER = "ERC1400TokensChecker";
 
-  string constant internal ERC1400_TOKENS_SENDER = "ERC1400TokensSender";
-  string constant internal ERC1400_TOKENS_RECIPIENT = "ERC1400TokensRecipient";
+  string internal constant ERC1400_TOKENS_SENDER = "ERC1400TokensSender";
+  string internal constant ERC1400_TOKENS_RECIPIENT = "ERC1400TokensRecipient";
 
   constructor() {
     ERC1820Implementer._setInterface(ERC1400_TOKENS_CHECKER);
@@ -54,14 +58,28 @@ contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Im
    * transfer restriction rule responsible for making the transfer operation invalid).
    * @return Destination partition.
    */
-   function canTransferByPartition(bytes calldata payload, bytes32 partition, address operator, address from, address to, uint256 value, bytes calldata data, bytes calldata operatorData)
-     external
-     override
-     view
-     returns (bytes1, bytes32, bytes32)
-   {
-     return _canTransferByPartition(payload, partition, operator, from, to, value, data, operatorData);
-   }
+  function canTransferByPartition(
+    bytes calldata payload,
+    bytes32 partition,
+    address operator,
+    address from,
+    address to,
+    uint256 value,
+    bytes calldata data,
+    bytes calldata operatorData
+  ) external view override returns (bytes1, bytes32, bytes32) {
+    return
+      _canTransferByPartition(
+        payload,
+        partition,
+        operator,
+        from,
+        to,
+        value,
+        data,
+        operatorData
+      );
+  }
 
   /**
    * @dev Know the reason on success or failure based on the EIP-1066 application-specific status codes.
@@ -79,44 +97,91 @@ contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Im
    * transfer restriction rule responsible for making the transfer operation invalid).
    * @return Destination partition.
    */
-   function _canTransferByPartition(bytes memory payload, bytes32 partition, address operator, address from, address to, uint256 value, bytes memory data, bytes memory operatorData)
-     internal
-     view
-     returns (bytes1, bytes32, bytes32)
-   {
-     if(!IERC1400(msg.sender).isOperatorForPartition(partition, operator, from))
-       return(hex"58", "", partition); // 0x58	invalid operator (transfer agent)
+  function _canTransferByPartition(
+    bytes memory payload,
+    bytes32 partition,
+    address operator,
+    address from,
+    address to,
+    uint256 value,
+    bytes memory data,
+    bytes memory operatorData
+  ) internal view returns (bytes1, bytes32, bytes32) {
+    if (!IERC1400(msg.sender).isOperatorForPartition(partition, operator, from))
+      return (hex"58", "", partition); // 0x58	invalid operator (transfer agent)
 
-     if((IERC20(msg.sender).balanceOf(from) < value) || (IERC1400(msg.sender).balanceOfByPartition(partition, from) < value))
-       return(hex"52", "", partition); // 0x52	insufficient balance
+    if (
+      (IERC20(msg.sender).balanceOf(from) < value) ||
+      (IERC1400(msg.sender).balanceOfByPartition(partition, from) < value)
+    ) return (hex"52", "", partition); // 0x52	insufficient balance
 
-     if(to == address(0))
-       return(hex"57", "", partition); // 0x57	invalid receiver
+    if (to == address(0)) return (hex"57", "", partition); // 0x57	invalid receiver
 
-     address hookImplementation;
-     
-     hookImplementation = ERC1820Client.interfaceAddr(from, ERC1400_TOKENS_SENDER);
-     if((hookImplementation != address(0))
-       && !IERC1400TokensSender(hookImplementation).canTransfer(payload, partition, operator, from, to, value, data, operatorData))
-       return(hex"56", "", partition); // 0x56	invalid sender
+    address hookImplementation;
 
-     hookImplementation = ERC1820Client.interfaceAddr(to, ERC1400_TOKENS_RECIPIENT);
-     if((hookImplementation != address(0))
-       && !IERC1400TokensRecipient(hookImplementation).canReceive(payload, partition, operator, from, to, value, data, operatorData))
-       return(hex"57", "", partition); // 0x57	invalid receiver
+    hookImplementation = ERC1820Client.interfaceAddr(
+      from,
+      ERC1400_TOKENS_SENDER
+    );
+    if (
+      (hookImplementation != address(0)) &&
+      !IERC1400TokensSender(hookImplementation).canTransfer(
+        payload,
+        partition,
+        operator,
+        from,
+        to,
+        value,
+        data,
+        operatorData
+      )
+    ) return (hex"56", "", partition); // 0x56	invalid sender
 
-     hookImplementation = ERC1820Client.interfaceAddr(msg.sender, ERC1400_TOKENS_VALIDATOR);
-     IERC1400TokensValidator.ValidateData memory vdata = IERC1400TokensValidator.ValidateData(msg.sender, payload, partition, operator, from, to, value, data, operatorData);
-     if((hookImplementation != address(0)) 
-       && !IERC1400TokensValidator(hookImplementation).canValidate(vdata))
-       return(hex"54", "", partition); // 0x54	transfers halted (contract paused)
+    hookImplementation = ERC1820Client.interfaceAddr(
+      to,
+      ERC1400_TOKENS_RECIPIENT
+    );
+    if (
+      (hookImplementation != address(0)) &&
+      !IERC1400TokensRecipient(hookImplementation).canReceive(
+        payload,
+        partition,
+        operator,
+        from,
+        to,
+        value,
+        data,
+        operatorData
+      )
+    ) return (hex"57", "", partition); // 0x57	invalid receiver
 
-     uint256 granularity = IERC1400Extended(msg.sender).granularity();
-     if(!(value.div(granularity).mul(granularity) == value))
-       return(hex"50", "", partition); // 0x50	transfer failure
+    hookImplementation = ERC1820Client.interfaceAddr(
+      msg.sender,
+      ERC1400_TOKENS_VALIDATOR
+    );
+    IERC1400TokensValidator.ValidateData memory vdata = IERC1400TokensValidator
+      .ValidateData(
+        msg.sender,
+        payload,
+        partition,
+        operator,
+        from,
+        to,
+        value,
+        data,
+        operatorData
+      );
+    if (
+      (hookImplementation != address(0)) &&
+      !IERC1400TokensValidator(hookImplementation).canValidate(vdata)
+    ) return (hex"54", "", partition); // 0x54	transfers halted (contract paused)
 
-     return(hex"51", "", partition);  // 0x51	transfer success
-   }
+    uint256 granularity = IERC1400Extended(msg.sender).granularity();
+    if (!(value.div(granularity).mul(granularity) == value))
+      return (hex"50", "", partition); // 0x50	transfer failure
+
+    return (hex"51", "", partition); // 0x51	transfer success
+  }
 
   /**
    * @dev Know the reason on success or failure based on the EIP-1066 application-specific status codes.
@@ -167,5 +232,4 @@ contract ERC1400TokensChecker is IERC1400TokensChecker, ERC1820Client, ERC1820Im
 
   //   return(hex"00", "");
   // }
-
 }
