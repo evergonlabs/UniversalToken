@@ -186,7 +186,7 @@ contract ERC1400 is
     uint256 tokenGranularity,
     address[] memory initialControllers,
     bytes32[] memory defaultPartitions
-  ) {
+  ) Ownable(msg.sender) {
     _name = tokenName;
     _symbol = tokenSymbol;
     _totalSupply = 0;
